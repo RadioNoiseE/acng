@@ -9,8 +9,8 @@ The comment at the top of the file `acng.c` has verbose information.
 To compile from scratch, execute:
 
 ```sh
-    cc -O2 acng.c -o acng -lexpat
-    strip acng
+cc -O2 acng.c -o acng -lexpat
+strip acng
 ```
 
 Then you can install it to your `PATH`.
