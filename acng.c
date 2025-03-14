@@ -28,19 +28,17 @@
  */
 
 #include "expat.h"
-#include <locale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <wchar.h>
 
 #define bs 4096 /* buffer size for input file */
 #define cw 12   /* width for each column */
 #define cn 5    /* number of column per line */
 #define pl 128  /* maximum length for password and username */
 #define sc                                                                     \
-  "echo \"%s\" | openconnect --protocol=anyconnect --quiet --background "      \
-  "--passwd-on-stdin --user=\"%s\" %s >/dev/null 2>&1"
+  "echo \"%s\" | /opt/pkg/sbin/openconnect --user=\"%s\" --passwd-on-stdin "   \
+  "--non-inter --syslog --reconnect-timeout=10 %s >/dev/null 2>&1"
 
 int il = 6;
 
@@ -53,21 +51,6 @@ typedef struct {
   int cd, ct, cl;
   svl *sl;
 } udh;
-
-int dgt(int n) {
-  if (n / 10 == 0)
-    return 1;
-  return 1 + dgt(n / 10);
-}
-
-int uni(const char *s) {
-  int l = mbstowcs(NULL, s, 0) + 1, a = 0;
-  wchar_t *d = malloc(sizeof(wchar_t) * l);
-  mbstowcs(d, s, l);
-  a = wcswidth(d, l);
-  free(d);
-  return a;
-}
 
 void XMLCALL ehb(void *d, const char *s, const char **a) {
   udh *ud = d;
@@ -106,26 +89,14 @@ void XMLCALL cdh(void *d, const XML_Char *s, int l) {
   }
 }
 
-int main(int ac, char **as) {
-  if (ac < 2) {
-    fprintf(stderr, "%s: Missing input file\n", *as);
+int main() {
+  FILE *px = fopen("/Users/rne/.proxy", "r");
+  if (!px)
     goto die;
-  } else if (ac >= 3) {
-    fprintf(stderr, "%s: Too many options\n", *as);
-    goto die;
-  }
-
-  FILE *px = fopen(*++as, "r");
-  if (!px) {
-    fprintf(stderr, "fopen: Can't open %s\n", *as);
-    goto die;
-  }
 
   XML_Parser ph = XML_ParserCreate("UTF-8");
-  if (!ph) {
-    fprintf(stderr, "expat: Can't create xml parser\n");
+  if (!ph)
     goto die;
-  }
 
   udh ud = {0};
   ud.sl = malloc(il * sizeof(svl));
@@ -133,56 +104,32 @@ int main(int ac, char **as) {
   XML_SetElementHandler(ph, ehb, ehe);
   XML_SetCharacterDataHandler(ph, cdh);
 
-  printf("%s: Extracting host servers\n", *--as);
-  fflush(stdout);
-  setlocale(LC_ALL, "");
-
   int f, l;
   char b[bs], u[pl + 1], p[pl + 1];
 
   do {
     f = (l = fread(b, sizeof(char), sizeof(b), px)) < sizeof(b);
     if (XML_Parse(ph, b, l, f) == XML_STATUS_ERROR)
-      fprintf(stderr, "expat: Invalid input %s at line %ld\n",
-              XML_ErrorString(XML_GetErrorCode(ph)),
-              XML_GetErrorLineNumber(ph));
+      goto die;
   } while (!f);
 
-  l = dgt(ud.cl - 1);
-  while (ud.cd++ < ud.cl) {
-    int p = cw - uni(ud.sl[ud.cd - 1].ky);
-    printf("[%*d] %s", l, ud.cd - 1, ud.sl[ud.cd - 1].ky);
-    if (!(ud.cd % cn))
-      printf("\n");
-    else
-      for (int i = 0; i < p; i++)
-        printf(" ");
-    free(ud.sl[ud.cd - 1].ky);
-  }
+  FILE *pc = fopen("/Users/rne/.cisco", "r");
 
-  if ((ud.cd - 1) % cn)
-    printf("\n");
-
-  printf("Server: ");
-  scanf("%d", &ud.cd);
-
-  printf("User: ");
-  scanf("%s", u);
-
-  printf("Key: ");
-  scanf("%s", p);
+  fscanf(pc, "%d", &ud.cd);
+  fscanf(pc, "%s", u);
+  fscanf(pc, "%s", p);
 
   if (ud.cd <= ud.cl) {
     l = strlen(sc) + strlen(ud.sl[ud.cd].vl) + strlen(u) + strlen(p) + 1;
     char *c = malloc(l * sizeof(char));
     snprintf(c, l, sc, p, u, ud.sl[ud.cd].vl);
     if ((l = system(c)) != 0)
-      fprintf(stderr, "%s: System call failed with return code %d\n", *as, l);
+      goto die;
     else
-      printf("%s: Connection established\n", *as);
+      goto die;
     free(c);
   } else
-    fprintf(stderr, "%s: Unknown server\n", *as);
+    goto die;
 
   XML_ParserFree(ph);
   while (ud.cl-- > 0)
